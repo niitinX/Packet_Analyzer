@@ -42,6 +42,7 @@ def benchmark_simple(input_path: str, output_path: str, quiet: bool) -> float:
             throttle_ms=0,
             stats_interval=0.0,
             perf=False,
+            quiet=quiet,
         )
     end = time.perf_counter()
     return end - start
@@ -61,6 +62,7 @@ def benchmark_mt(input_path: str, output_path: str, lbs: int, fps: int, quiet: b
             throttle_ms=0,
             stats_interval=0.0,
             perf=False,
+            quiet=quiet,
         )
     end = time.perf_counter()
     return end - start

@@ -15,6 +15,7 @@ class AppType(str, Enum):
     FACEBOOK = "facebook"
     GITHUB = "github"
     TIKTOK = "tiktok"
+    PORNHUB = "pornhub"
 
 
 @dataclass(frozen=True)

@@ -42,6 +42,8 @@ class FastPath:
         self.dropped = 0
         self.processed = 0
         self.detected_domains: Dict[str, AppType] = {}
+        self.blocked_app_matches: set[AppType] = set()
+        self.blocked_ip_matches: set[str] = set()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self) -> None:
@@ -85,6 +87,10 @@ class FastPath:
             flow = self._classify(item.parsed, flow)
             if self.rules.is_blocked(item.parsed.src_ip, flow.app_type, flow.sni):
                 flow.blocked = True
+                if flow.app_type in self.rules.blocked_apps:
+                    self.blocked_app_matches.add(flow.app_type)
+                if item.parsed.src_ip in self.rules.blocked_ips:
+                    self.blocked_ip_matches.add(str(ipaddress.IPv4Address(item.parsed.src_ip)))
 
             if flow.blocked:
                 self.dropped += 1
@@ -216,6 +222,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--throttle-ms", type=int, default=0)
     parser.add_argument("--stats-interval", type=float, default=0.0)
     parser.add_argument("--perf", action="store_true")
+    parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
 
 
@@ -244,14 +251,16 @@ def run_mt(
     throttle_ms: int,
     stats_interval: float,
     perf: bool,
-) -> None:
+    quiet: bool = False,
+) -> dict:
     start_time = time.perf_counter()
     reader = PcapReader(input_path)
     reader.open()
 
-    _print_header(lbs, fps)
-    _print_rules(rules)
-    print("\n[Reader] Processing packets...")
+    if not quiet:
+        _print_header(lbs, fps)
+        _print_rules(rules)
+        print("\n[Reader] Processing packets...")
 
     stats = Stats()
     stats_printer = LiveStatsPrinter(stats, stats_interval)
@@ -285,7 +294,8 @@ def run_mt(
 
     reader.close()
     snapshot = stats.snapshot()
-    print(f"[Reader] Done reading {snapshot.total_packets} packets")
+    if not quiet:
+        print(f"[Reader] Done reading {snapshot.total_packets} packets")
 
     for lb in load_balancers:
         lb.queue.close()
@@ -314,48 +324,106 @@ def run_mt(
     for fp in fast_paths:
         detected.update(fp.detected_domains)
 
-    print("")
-    print(_box_top())
-    print(_box_line("                      PROCESSING REPORT"))
-    print(_box_mid())
-    print(_box_line(f" Total Packets: {snapshot.total_packets:>16}"))
-    print(_box_line(f" Total Bytes: {snapshot.total_bytes:>18}"))
-    print(_box_line(f" TCP Packets: {snapshot.tcp_packets:>17}"))
-    print(_box_line(f" UDP Packets: {snapshot.udp_packets:>17}"))
-    print(_box_mid())
-    print(_box_line(f" Forwarded: {forwarded:>20}"))
-    print(_box_line(f" Dropped: {dropped:>22}"))
-    print(_box_mid())
-    print(_box_line(" THREAD STATISTICS"))
-    for idx, lb in enumerate(load_balancers):
-        print(_box_line(f"   LB{idx} dispatched: {lb.dispatched:>13}"))
-    for idx, fp in enumerate(fast_paths):
-        print(_box_line(f"   FP{idx} processed: {fp.processed:>14}"))
-    print(_box_mid())
-    print(_box_line("                   APPLICATION BREAKDOWN"))
-    print(_box_mid())
-    for app, count in app_stats.most_common():
-        pct = (count / snapshot.total_packets * 100.0) if snapshot.total_packets else 0.0
-        bar = _render_bar(pct)
-        label = _format_app_name(app)
-        blocked = " (BLOCKED)" if app in rules.blocked_apps else ""
-        line = f" {label:<18} {count:>3} {pct:>5.1f}% {bar:<20}{blocked}"
-        print(_box_line(line[:BOX_WIDTH]))
-    print(_box_bottom())
+    elapsed = time.perf_counter() - start_time
+    pps = snapshot.total_packets / elapsed if elapsed > 0 else 0.0
+    mib_per_sec = (snapshot.total_bytes / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
 
-    if detected:
-        print("\n[Detected Domains/SNIs]")
+    if not quiet:
+        print("")
+        print(_box_top())
+        print(_box_line("                      PROCESSING REPORT"))
+        print(_box_mid())
+        print(_box_line(f" Total Packets: {snapshot.total_packets:>16}"))
+        print(_box_line(f" Total Bytes: {snapshot.total_bytes:>18}"))
+        print(_box_line(f" TCP Packets: {snapshot.tcp_packets:>17}"))
+        print(_box_line(f" UDP Packets: {snapshot.udp_packets:>17}"))
+        print(_box_mid())
+        print(_box_line(f" Forwarded: {forwarded:>20}"))
+        print(_box_line(f" Dropped: {dropped:>22}"))
+        print(_box_mid())
+        print(_box_line(" THREAD STATISTICS"))
+        for idx, lb in enumerate(load_balancers):
+            print(_box_line(f"   LB{idx} dispatched: {lb.dispatched:>13}"))
+        for idx, fp in enumerate(fast_paths):
+            print(_box_line(f"   FP{idx} processed: {fp.processed:>14}"))
+        print(_box_mid())
+        print(_box_line("                   APPLICATION BREAKDOWN"))
+        print(_box_mid())
+        for app, count in app_stats.most_common():
+            pct = (count / snapshot.total_packets * 100.0) if snapshot.total_packets else 0.0
+            bar = _render_bar(pct)
+            label = _format_app_name(app)
+            blocked = " (BLOCKED)" if app in rules.blocked_apps else ""
+            line = f" {label:<18} {count:>3} {pct:>5.1f}% {bar:<20}{blocked}"
+            print(_box_line(line[:BOX_WIDTH]))
+        print(_box_bottom())
+
+        if detected:
+            print("\n[Detected Domains/SNIs]")
+            for domain, app in sorted(detected.items()):
+                print(f"  - {domain} -> {_format_app_name(app)}")
+
+        if perf:
+            print("\n[Performance]")
+            print(f"  Elapsed: {elapsed:.4f} sec")
+            print(f"  Throughput: {pps:.2f} packets/sec")
+            print(f"  Throughput: {mib_per_sec:.2f} MiB/sec")
+
+    blocked_domain_matches = []
+    if rules.blocked_domains:
         for domain, app in sorted(detected.items()):
-            print(f"  - {domain} -> {_format_app_name(app)}")
+            sni_lower = domain.lower()
+            if any(block in sni_lower for block in rules.blocked_domains):
+                blocked_domain_matches.append({"domain": domain, "app": _format_app_name(app)})
 
-    if perf:
-        elapsed = time.perf_counter() - start_time
-        pps = snapshot.total_packets / elapsed if elapsed > 0 else 0.0
-        mib_per_sec = (snapshot.total_bytes / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
-        print("\n[Performance]")
-        print(f"  Elapsed: {elapsed:.4f} sec")
-        print(f"  Throughput: {pps:.2f} packets/sec")
-        print(f"  Throughput: {mib_per_sec:.2f} MiB/sec")
+    blocked_app_matches_set: set[AppType] = set()
+    blocked_ip_matches_set: set[str] = set()
+    for fp in fast_paths:
+        blocked_app_matches_set.update(fp.blocked_app_matches)
+        blocked_ip_matches_set.update(fp.blocked_ip_matches)
+
+    blocked_app_matches = [_format_app_name(app) for app in sorted(blocked_app_matches_set, key=lambda a: a.value)]
+    blocked_ip_matches = sorted(blocked_ip_matches_set)
+
+    report = {
+        "mode": "mt",
+        "lbs": lbs,
+        "fps": fps,
+        "blocked_matches": {
+            "apps": blocked_app_matches,
+            "ips": blocked_ip_matches,
+            "domains": blocked_domain_matches,
+        },
+        "total_packets": snapshot.total_packets,
+        "total_bytes": snapshot.total_bytes,
+        "tcp_packets": snapshot.tcp_packets,
+        "udp_packets": snapshot.udp_packets,
+        "forwarded": forwarded,
+        "dropped": dropped,
+        "thread_stats": {
+            "load_balancers": [lb.dispatched for lb in load_balancers],
+            "fast_paths": [fp.processed for fp in fast_paths],
+        },
+        "app_breakdown": [
+            {
+                "app": _format_app_name(app),
+                "count": count,
+                "pct": (count / snapshot.total_packets * 100.0) if snapshot.total_packets else 0.0,
+                "blocked": app in rules.blocked_apps,
+            }
+            for app, count in app_stats.most_common()
+        ],
+        "detected_domains": [
+            {"domain": domain, "app": _format_app_name(app)}
+            for domain, app in sorted(detected.items())
+        ],
+        "performance": {
+            "elapsed_sec": elapsed,
+            "packets_per_sec": pps,
+            "mib_per_sec": mib_per_sec,
+        },
+    }
+    return report
 
 
 def main() -> None:
@@ -370,6 +438,7 @@ def main() -> None:
         throttle_ms=args.throttle_ms,
         stats_interval=args.stats_interval,
         perf=args.perf,
+        quiet=args.quiet,
     )
     if args.rules_out:
         rules.save(args.rules_out)

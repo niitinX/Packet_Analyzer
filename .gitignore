@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 output*.pcap
 bench_output_*.pcap
+api/jobs/
+ui/node_modules/
+ui/dist/
+ui/.vite/

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
-from typing import List
+import random
+from typing import List, Optional
 
 from packet_analyzer.pcap_reader import PcapPacketHeader, PcapWriter
 
@@ -251,66 +252,125 @@ def _add_dns_packets(
         )
 
 
-def build_sample_packets() -> List[PacketSpec]:
+def build_sample_packets(*, randomize: bool = False, seed: Optional[int] = None) -> List[PacketSpec]:
     samples: List[PacketSpec] = []
 
-    _add_tls_flow(
-        samples,
-        src_ip="192.168.1.100",
-        dst_ip="142.250.185.206",
-        src_port=50000,
-        host="www.youtube.com",
-        extra_packets=4,
-    )
-    _add_tls_flow(
-        samples,
-        src_ip="192.168.1.101",
-        dst_ip="142.250.185.206",
-        src_port=50010,
-        host="www.youtube.com",
-        extra_packets=3,
-    )
-    _add_tls_flow(
-        samples,
-        src_ip="192.168.1.100",
-        dst_ip="31.13.74.36",
-        src_port=50001,
-        host="www.facebook.com",
-        extra_packets=2,
-    )
-    _add_tls_flow(
-        samples,
-        src_ip="192.168.1.100",
-        dst_ip="140.82.121.4",
-        src_port=50002,
-        host="github.com",
-        extra_packets=2,
-    )
-    _add_http_flow(
-        samples,
-        src_ip="192.168.1.100",
-        dst_ip="93.184.216.34",
-        src_port=50003,
-        host="example.com",
-        extra_packets=2,
-    )
+    rng = random.Random(seed) if randomize else None
+
+    tls_hosts = [
+        "www.youtube.com",
+        "www.facebook.com",
+        "github.com",
+        "www.google.com",
+        "www.tiktok.com",
+        "video.twimg.com",
+        "www.instagram.com",
+        "www.reddit.com",
+        "www.netflix.com",
+        "www.spotify.com",
+        "www.linkedin.com",
+        "www.apple.com",
+        "www.microsoft.com",
+        "www.amazon.com",
+        "www.paypal.com",
+        "www.cloudflare.com",
+        "www.stackoverflow.com",
+        "www.nytimes.com",
+        "www.bbc.com",
+        "www.notion.so",
+        "www.dropbox.com",
+        "www.slack.com",
+        "www.zoom.us",
+        "discord.com",
+        "www.twitch.tv",
+        "www.roblox.com",
+        "www.pinterest.com",
+        "www.quora.com",
+        "www.medium.com",
+        "www.wikipedia.org",
+        "www.pornhub.org",
+        "www.xnxx.com",
+        "www.redtube.com",
+        "www.brazzers.com",
+        
+    ]
+    http_hosts = [
+        "example.com",
+        "news.ycombinator.com",
+        "docs.python.org",
+        "www.wikipedia.org",
+        "httpbin.org",
+        "developer.mozilla.org",
+        "api.github.com",
+        "www.gnu.org",
+        "www.kernel.org",
+        "www.rfc-editor.org",
+        "www.iana.org",
+        "www.apache.org",
+        "www.nginx.com",
+        "www.postgresql.org",
+        "www.mysql.com",
+        "www.ruby-lang.org",
+        "www.rust-lang.org",
+        "www.go.dev",
+        "www.docker.com",
+        "www.kubernetes.io",
+    ]
+
+    if randomize and rng:
+        rng.shuffle(tls_hosts)
+        rng.shuffle(http_hosts)
+
+    def pick_extra(min_v: int, max_v: int) -> int:
+        return rng.randint(min_v, max_v) if rng else max_v
+
+    tls_count = 4 if not randomize else rng.randint(3, 5)
+    for idx in range(tls_count):
+        host = tls_hosts[idx % len(tls_hosts)]
+        _add_tls_flow(
+            samples,
+            src_ip=f"192.168.1.{100 + idx}",
+            dst_ip="142.250.185.206",
+            src_port=50000 + idx * 5,
+            host=host,
+            extra_packets=pick_extra(2, 6),
+        )
+
+    http_count = 1 if not randomize else rng.randint(1, 2)
+    for idx in range(http_count):
+        host = http_hosts[idx % len(http_hosts)]
+        _add_http_flow(
+            samples,
+            src_ip=f"192.168.1.{120 + idx}",
+            dst_ip="93.184.216.34",
+            src_port=51000 + idx * 3,
+            host=host,
+            extra_packets=pick_extra(1, 4),
+        )
+
     _add_dns_packets(
         samples,
-        src_ip="192.168.1.100",
+        src_ip="192.168.1.200",
         dst_ip="8.8.8.8",
         src_port=53000,
-        count=3,
+        count=pick_extra(2, 6),
     )
 
     return samples
 
 
-def write_test_pcap(path: str) -> None:
+def write_test_pcap(
+    path: str,
+    *,
+    verbose: bool = True,
+    randomize: bool = False,
+    seed: Optional[int] = None,
+) -> int:
     writer = PcapWriter(path)
     writer.open()
 
     ts = 1712420000
-    samples = build_sample_packets()
+    samples = build_sample_packets(randomize=randomize, seed=seed)
     for spec in samples:
         if spec.proto == "tcp":
             ip_payload = _build_tcp_packet(
@@ -340,7 +400,9 @@ def write_test_pcap(path: str) -> None:
         ts += 1
 
     writer.close()
-    print(f"Wrote {path} ({len(samples)} packets)")
+    if verbose:
+        print(f"Wrote {path} ({len(samples)} packets)")
+    return len(samples)
 
 
 def main() -> None:

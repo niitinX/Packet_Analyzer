@@ -39,6 +39,8 @@ Reader -> Load Balancers -> Fast Paths -> Output Writer
 - packet_analyzer/dpi_mt.py - Multi-threaded engine
 - packet_analyzer/live_stats.py - Live stats printer
 - scripts/benchmark.py - Benchmark runner
+- api/ - FastAPI backend
+- ui/ - React frontend
 
 ## Requirements
 
@@ -63,6 +65,7 @@ python -m packet_analyzer.dpi_mt input.pcap output.pcap --lbs 2 --fps 4 --block-
 - --throttle-ms 10
 - --stats-interval 2
 - --perf
+- --quiet
 
 ## Rules File (rules.json)
 
@@ -80,6 +83,28 @@ python -m packet_analyzer.dpi_mt input.pcap output.pcap --lbs 2 --fps 4 --block-
 python -m scripts.benchmark test_dpi.pcap --mode simple --repeat 3
 python -m scripts.benchmark test_dpi.pcap --mode mt --lbs 2 --fps 4 --repeat 3
 ```
+
+## API + UI (FastAPI + React)
+
+Start the API:
+
+```bash
+python -m pip install -r api/requirements.txt
+python -m uvicorn api.app:app --reload
+```
+
+Start the UI:
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+Generate a sample PCAP via the UI:
+
+- Click "Generate sample PCAP and run" in the UI to run the built-in sample capture.
+- Toggle "Randomize sample domains" to generate a different sample each run.
 
 ## Resume Bullets
 

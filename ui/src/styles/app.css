@@ -1,0 +1,277 @@
+:root {
+  color-scheme: light;
+  --ink: #0d1b2a;
+  --muted: #4f5d75;
+  --accent: #f97316;
+  --accent-soft: #fde7d6;
+  --surface: #ffffff;
+  --surface-2: #f4f6fb;
+  --border: #d4dae4;
+  --shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+  --radius: 18px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  background: radial-gradient(circle at top, #fef3c7 0%, #f8fafc 40%, #e2e8f0 100%);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+h1 {
+  font-size: clamp(2rem, 3vw, 3rem);
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  color: var(--muted);
+  max-width: 420px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+.dot.running {
+  background: #f97316;
+}
+
+.dot.done {
+  background: #22c55e;
+}
+
+.dot.error {
+  background: #ef4444;
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+}
+
+.panel {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+
+.panel h2 {
+  margin-bottom: 16px;
+}
+
+.panel h3 {
+  margin: 20px 0 12px;
+  font-size: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.field.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.field.checkbox input {
+  width: 16px;
+  height: 16px;
+}
+
+.field input {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.field.row {
+  flex-direction: row;
+  gap: 12px;
+}
+
+.field.row label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.segmented {
+  display: flex;
+  gap: 10px;
+}
+
+.segmented button {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.segmented button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.primary {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(120deg, #f97316, #fb923c);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  background: #cbd5f5;
+  cursor: not-allowed;
+}
+
+.error {
+  margin-top: 12px;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.report .report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.report .label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.report .value {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.value.small {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.blocked-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.list {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.list.compact {
+  gap: 6px;
+  font-size: 13px;
+}
+
+.list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.secondary {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.secondary[type="button"] {
+  width: 100%;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .field.row {
+    flex-direction: column;
+  }
+}
