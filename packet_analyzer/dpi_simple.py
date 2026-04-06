@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import time
 from collections import Counter
 from typing import Dict
 
 from .pcap_reader import PcapReader, PcapWriter
 from .packet_parser import ParsedPacket, parse_packet, PROTO_UDP
+from .live_stats import LiveStatsPrinter, Stats
 from .rules import RuleManager
 from .sni_extractor import extract_http_host, extract_tls_sni
 from .dpi_types import AppType, Flow, FiveTuple, sni_to_app_type
@@ -35,7 +37,14 @@ def _app_from_packet(pkt: ParsedPacket, flow: Flow) -> Flow:
     return flow
 
 
-def run_simple(input_path: str, output_path: str, rules: RuleManager) -> None:
+def run_simple(
+    input_path: str,
+    output_path: str,
+    rules: RuleManager,
+    *,
+    throttle_ms: int,
+    stats_interval: float,
+) -> None:
     reader = PcapReader(input_path)
     reader.open()
 
@@ -46,11 +55,11 @@ def run_simple(input_path: str, output_path: str, rules: RuleManager) -> None:
     app_stats = Counter()
     forwarded = 0
     dropped = 0
-    total = 0
-    total_bytes = 0
-    tcp_packets = 0
-    udp_packets = 0
+    stats = Stats()
     detected: Dict[str, AppType] = {}
+
+    stats_printer = LiveStatsPrinter(stats, stats_interval)
+    stats_printer.start()
 
     print("DPI ENGINE v2.0 (Single-threaded)")
     for app in sorted(rules.blocked_apps, key=lambda a: a.value):
@@ -67,12 +76,11 @@ def run_simple(input_path: str, output_path: str, rules: RuleManager) -> None:
         if not parsed:
             continue
 
-        total += 1
-        total_bytes += len(raw.data)
-        if parsed.protocol == 6:
-            tcp_packets += 1
-        elif parsed.protocol == PROTO_UDP:
-            udp_packets += 1
+        stats.record_packet(
+            len(raw.data),
+            is_tcp=parsed.protocol == 6,
+            is_udp=parsed.protocol == PROTO_UDP,
+        )
 
         flow = flows.setdefault(parsed.tuple, Flow())
         flow = _app_from_packet(parsed, flow)
@@ -84,31 +92,39 @@ def run_simple(input_path: str, output_path: str, rules: RuleManager) -> None:
 
         if flow.blocked:
             dropped += 1
+            stats.record_dropped()
             continue
 
+        if throttle_ms > 0:
+            time.sleep(throttle_ms / 1000.0)
+
         forwarded += 1
+        stats.record_forwarded()
         writer.write_packet(raw.header, raw.data)
         app_stats[flow.app_type] += 1
 
     reader.close()
     writer.close()
+    stats_printer.stop()
 
-    print(f"[Reader] Done reading {total} packets\n")
+    snapshot = stats.snapshot()
+
+    print(f"[Reader] Done reading {snapshot.total_packets} packets\n")
     print(_box_top())
     print(_box_line("                      PROCESSING REPORT"))
     print(_box_mid())
-    print(_box_line(f" Total Packets: {total:>16}"))
-    print(_box_line(f" Total Bytes: {total_bytes:>18}"))
-    print(_box_line(f" TCP Packets: {tcp_packets:>17}"))
-    print(_box_line(f" UDP Packets: {udp_packets:>17}"))
+    print(_box_line(f" Total Packets: {snapshot.total_packets:>16}"))
+    print(_box_line(f" Total Bytes: {snapshot.total_bytes:>18}"))
+    print(_box_line(f" TCP Packets: {snapshot.tcp_packets:>17}"))
+    print(_box_line(f" UDP Packets: {snapshot.udp_packets:>17}"))
     print(_box_mid())
-    print(_box_line(f" Forwarded: {forwarded:>20}"))
-    print(_box_line(f" Dropped: {dropped:>22}"))
+    print(_box_line(f" Forwarded: {snapshot.forwarded:>20}"))
+    print(_box_line(f" Dropped: {snapshot.dropped:>22}"))
     print(_box_mid())
     print(_box_line("                   APPLICATION BREAKDOWN"))
     print(_box_mid())
     for app, count in app_stats.most_common():
-        pct = (count / total * 100.0) if total else 0.0
+        pct = (count / snapshot.total_packets * 100.0) if snapshot.total_packets else 0.0
         bar = _render_bar(pct)
         label = _format_app_name(app)
         blocked = " (BLOCKED)" if app in rules.blocked_apps else ""
@@ -129,6 +145,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--block-app", action="append", default=[])
     parser.add_argument("--block-ip", action="append", default=[])
     parser.add_argument("--block-domain", action="append", default=[])
+    parser.add_argument("--rules-in", help="Load rules from JSON file")
+    parser.add_argument("--rules-out", help="Save rules to JSON file after run")
+    parser.add_argument("--throttle-ms", type=int, default=0)
+    parser.add_argument("--stats-interval", type=float, default=0.0)
     return parser.parse_args()
 
 
@@ -167,7 +187,7 @@ def _render_bar(pct: float, width: int = 20) -> str:
 
 
 def _build_rules(args: argparse.Namespace) -> RuleManager:
-    rules = RuleManager()
+    rules = RuleManager.load(args.rules_in) if args.rules_in else RuleManager()
     for app_name in args.block_app:
         try:
             rules.add_block_app(AppType(app_name.lower()))
@@ -184,7 +204,15 @@ def _build_rules(args: argparse.Namespace) -> RuleManager:
 def main() -> None:
     args = _parse_args()
     rules = _build_rules(args)
-    run_simple(args.input, args.output, rules)
+    run_simple(
+        args.input,
+        args.output,
+        rules,
+        throttle_ms=args.throttle_ms,
+        stats_interval=args.stats_interval,
+    )
+    if args.rules_out:
+        rules.save(args.rules_out)
 
 
 if __name__ == "__main__":

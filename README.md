@@ -26,6 +26,12 @@ python -m packet_analyzer.dpi_simple input.pcap output.pcap \
   --block-domain facebook
 ```
 
+Optional flags:
+
+- `--rules-in rules.json` / `--rules-out rules.json`
+- `--throttle-ms 10`
+- `--stats-interval 2`
+
 ## Run (Multi-threaded)
 
 ```bash
@@ -33,6 +39,12 @@ python -m packet_analyzer.dpi_mt input.pcap output.pcap \
   --lbs 2 --fps 4 \
   --block-app youtube
 ```
+
+Optional flags:
+
+- `--rules-in rules.json` / `--rules-out rules.json`
+- `--throttle-ms 10`
+- `--stats-interval 2`
 
 ## Notes
 

@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import threading
+import time
 from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from .live_stats import LiveStatsPrinter, Stats
 from .pcap_reader import PcapReader, PcapWriter, RawPacket
 from .packet_parser import ParsedPacket, parse_packet, PROTO_UDP
 from .rules import RuleManager
@@ -26,12 +28,16 @@ class FastPath:
         self,
         rules: RuleManager,
         output_queue: ThreadSafeQueue[RawPacket],
+        stats: Stats,
+        throttle_ms: int,
     ) -> None:
         self.rules = rules
         self.output_queue = output_queue
+        self.stats = stats
+        self.throttle_ms = throttle_ms
         self.queue: ThreadSafeQueue[PacketItem] = ThreadSafeQueue()
         self.flows: Dict[FiveTuple, Flow] = {}
-        self.stats = Counter()
+        self.app_stats = Counter()
         self.forwarded = 0
         self.dropped = 0
         self.processed = 0
@@ -82,10 +88,15 @@ class FastPath:
 
             if flow.blocked:
                 self.dropped += 1
+                self.stats.record_dropped()
                 continue
 
+            if self.throttle_ms > 0:
+                time.sleep(self.throttle_ms / 1000.0)
+
             self.forwarded += 1
-            self.stats[flow.app_type] += 1
+            self.stats.record_forwarded()
+            self.app_stats[flow.app_type] += 1
             self.output_queue.push(item.raw)
 
 
@@ -200,11 +211,15 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--block-app", action="append", default=[])
     parser.add_argument("--block-ip", action="append", default=[])
     parser.add_argument("--block-domain", action="append", default=[])
+    parser.add_argument("--rules-in", help="Load rules from JSON file")
+    parser.add_argument("--rules-out", help="Save rules to JSON file after run")
+    parser.add_argument("--throttle-ms", type=int, default=0)
+    parser.add_argument("--stats-interval", type=float, default=0.0)
     return parser.parse_args()
 
 
 def _build_rules(args: argparse.Namespace) -> RuleManager:
-    rules = RuleManager()
+    rules = RuleManager.load(args.rules_in) if args.rules_in else RuleManager()
     for app_name in args.block_app:
         try:
             rules.add_block_app(AppType(app_name.lower()))
@@ -218,7 +233,16 @@ def _build_rules(args: argparse.Namespace) -> RuleManager:
     return rules
 
 
-def run_mt(input_path: str, output_path: str, rules: RuleManager, lbs: int, fps: int) -> None:
+def run_mt(
+    input_path: str,
+    output_path: str,
+    rules: RuleManager,
+    lbs: int,
+    fps: int,
+    *,
+    throttle_ms: int,
+    stats_interval: float,
+) -> None:
     reader = PcapReader(input_path)
     reader.open()
 
@@ -226,10 +250,14 @@ def run_mt(input_path: str, output_path: str, rules: RuleManager, lbs: int, fps:
     _print_rules(rules)
     print("\n[Reader] Processing packets...")
 
+    stats = Stats()
+    stats_printer = LiveStatsPrinter(stats, stats_interval)
+    stats_printer.start()
+
     output = OutputWriter(output_path)
     output.start()
 
-    fast_paths = [FastPath(rules, output.queue) for _ in range(fps)]
+    fast_paths = [FastPath(rules, output.queue, stats, throttle_ms) for _ in range(fps)]
     for fp in fast_paths:
         fp.start()
 
@@ -237,28 +265,24 @@ def run_mt(input_path: str, output_path: str, rules: RuleManager, lbs: int, fps:
     for lb in load_balancers:
         lb.start()
 
-    total = 0
-    total_bytes = 0
-    tcp_packets = 0
-    udp_packets = 0
     for raw in reader:
         parsed = parse_packet(raw.data)
         if not parsed:
             continue
 
-        total_bytes += len(raw.data)
-        if parsed.protocol == 6:
-            tcp_packets += 1
-        elif parsed.protocol == PROTO_UDP:
-            udp_packets += 1
+        stats.record_packet(
+            len(raw.data),
+            is_tcp=parsed.protocol == 6,
+            is_udp=parsed.protocol == PROTO_UDP,
+        )
 
         item = PacketItem(raw=raw, parsed=parsed)
         lb_idx = hash(parsed.tuple) % lbs
         load_balancers[lb_idx].queue.push(item)
-        total += 1
 
     reader.close()
-    print(f"[Reader] Done reading {total} packets")
+    snapshot = stats.snapshot()
+    print(f"[Reader] Done reading {snapshot.total_packets} packets")
 
     for lb in load_balancers:
         lb.queue.close()
@@ -273,12 +297,15 @@ def run_mt(input_path: str, output_path: str, rules: RuleManager, lbs: int, fps:
     output.queue.close()
     output.join()
 
+    stats_printer.stop()
+    snapshot = stats.snapshot()
+
     forwarded = sum(fp.forwarded for fp in fast_paths)
     dropped = sum(fp.dropped for fp in fast_paths)
 
     app_stats = Counter()
     for fp in fast_paths:
-        app_stats.update(fp.stats)
+        app_stats.update(fp.app_stats)
 
     detected: Dict[str, AppType] = {}
     for fp in fast_paths:
@@ -288,10 +315,10 @@ def run_mt(input_path: str, output_path: str, rules: RuleManager, lbs: int, fps:
     print(_box_top())
     print(_box_line("                      PROCESSING REPORT"))
     print(_box_mid())
-    print(_box_line(f" Total Packets: {total:>16}"))
-    print(_box_line(f" Total Bytes: {total_bytes:>18}"))
-    print(_box_line(f" TCP Packets: {tcp_packets:>17}"))
-    print(_box_line(f" UDP Packets: {udp_packets:>17}"))
+    print(_box_line(f" Total Packets: {snapshot.total_packets:>16}"))
+    print(_box_line(f" Total Bytes: {snapshot.total_bytes:>18}"))
+    print(_box_line(f" TCP Packets: {snapshot.tcp_packets:>17}"))
+    print(_box_line(f" UDP Packets: {snapshot.udp_packets:>17}"))
     print(_box_mid())
     print(_box_line(f" Forwarded: {forwarded:>20}"))
     print(_box_line(f" Dropped: {dropped:>22}"))
@@ -305,7 +332,7 @@ def run_mt(input_path: str, output_path: str, rules: RuleManager, lbs: int, fps:
     print(_box_line("                   APPLICATION BREAKDOWN"))
     print(_box_mid())
     for app, count in app_stats.most_common():
-        pct = (count / total * 100.0) if total else 0.0
+        pct = (count / snapshot.total_packets * 100.0) if snapshot.total_packets else 0.0
         bar = _render_bar(pct)
         label = _format_app_name(app)
         blocked = " (BLOCKED)" if app in rules.blocked_apps else ""
@@ -322,7 +349,17 @@ def run_mt(input_path: str, output_path: str, rules: RuleManager, lbs: int, fps:
 def main() -> None:
     args = _parse_args()
     rules = _build_rules(args)
-    run_mt(args.input, args.output, rules, args.lbs, args.fps)
+    run_mt(
+        args.input,
+        args.output,
+        rules,
+        args.lbs,
+        args.fps,
+        throttle_ms=args.throttle_ms,
+        stats_interval=args.stats_interval,
+    )
+    if args.rules_out:
+        rules.save(args.rules_out)
 
 
 if __name__ == "__main__":
