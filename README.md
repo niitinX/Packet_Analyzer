@@ -86,3 +86,61 @@ python -m scripts.benchmark test_dpi.pcap --mode mt --lbs 2 --fps 4 --repeat 3
 - Built a Python DPI engine that parses PCAP files, tracks flows by 5-tuple, extracts TLS SNI/HTTP Host, and enforces blocking rules.
 - Designed a multi-threaded pipeline with load balancers and consistent hashing to keep flow state correct.
 - Added live stats, throttling, and persistent rule sets; measured throughput with a custom benchmark script.
+
+
+
+
+
+## Ongoing Work
+
+**full project layout** with FastAPI + React UI added:
+
+```
+DPI/
+├── packet_analyzer/
+│   ├── __init__.py
+│   ├── dpi_types.py
+│   ├── pcap_reader.py
+│   ├── packet_parser.py
+│   ├── sni_extractor.py
+│   ├── rules.py
+│   ├── thread_safe_queue.py
+│   ├── live_stats.py
+│   ├── dpi_simple.py
+│   └── dpi_mt.py
+├── scripts/
+│   ├── __init__.py
+│   └── benchmark.py
+├── generate_test_pcap.py
+├── test_dpi.pcap
+├── rules.json
+├── README.md
+├── .gitignore
+│
+├── api/                         # FastAPI backend
+│   ├── app.py                   # FastAPI entrypoint
+│   ├── jobs/                    # per-run job storage
+│   │   └── <job_id>/
+│   │       ├── input.pcap
+│   │       ├── output.pcap
+│   │       └── report.json
+│   ├── schemas.py               # request/response models
+│   └── utils.py                 # helpers (file mgmt, job runner)
+│
+└── ui/                          # React frontend
+    ├── package.json
+    ├── public/
+    │   └── index.html
+    └── src/
+        ├── App.jsx
+        ├── api.js               # API client
+        ├── components/
+        │   ├── UploadForm.jsx
+        │   ├── RulesForm.jsx
+        │   ├── RunConfig.jsx
+        │   ├── Progress.jsx
+        │   └── Report.jsx
+        └── styles/
+            └── app.css
+```
+
