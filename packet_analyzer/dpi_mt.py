@@ -215,6 +215,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--rules-out", help="Save rules to JSON file after run")
     parser.add_argument("--throttle-ms", type=int, default=0)
     parser.add_argument("--stats-interval", type=float, default=0.0)
+    parser.add_argument("--perf", action="store_true")
     return parser.parse_args()
 
 
@@ -242,7 +243,9 @@ def run_mt(
     *,
     throttle_ms: int,
     stats_interval: float,
+    perf: bool,
 ) -> None:
+    start_time = time.perf_counter()
     reader = PcapReader(input_path)
     reader.open()
 
@@ -345,6 +348,15 @@ def run_mt(
         for domain, app in sorted(detected.items()):
             print(f"  - {domain} -> {_format_app_name(app)}")
 
+    if perf:
+        elapsed = time.perf_counter() - start_time
+        pps = snapshot.total_packets / elapsed if elapsed > 0 else 0.0
+        mib_per_sec = (snapshot.total_bytes / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
+        print("\n[Performance]")
+        print(f"  Elapsed: {elapsed:.4f} sec")
+        print(f"  Throughput: {pps:.2f} packets/sec")
+        print(f"  Throughput: {mib_per_sec:.2f} MiB/sec")
+
 
 def main() -> None:
     args = _parse_args()
@@ -357,6 +369,7 @@ def main() -> None:
         args.fps,
         throttle_ms=args.throttle_ms,
         stats_interval=args.stats_interval,
+        perf=args.perf,
     )
     if args.rules_out:
         rules.save(args.rules_out)
