@@ -8,7 +8,8 @@ A pure-Python Deep Packet Inspection engine that parses PCAP files, classifies f
 - SNI and Host extraction for HTTPS/HTTP classification
 - Flow-based blocking (IP, app, domain)
 - Multi-threaded pipeline with consistent hashing
-- Live stats, throttling, and JSON rule persistence
+- Live stats in CLI and UI, throttling, and JSON rule persistence
+- Sample PCAP generator with randomized domains
 
 ## Architecture (Multi-threaded)
 
@@ -103,8 +104,15 @@ npm run dev
 
 Generate a sample PCAP via the UI:
 
-- Click "Generate sample PCAP and run" in the UI to run the built-in sample capture.
-- Toggle "Randomize sample domains" to generate a different sample each run.
+- Click "Generate sample PCAP" to create a sample file.
+- Use the "Sample size" slider to scale the number of flows/packets.
+- Toggle "Randomize sample domains" to vary hostnames.
+- Click "Run DPI" to process the generated sample.
+
+Live stats in the UI:
+
+- A Live Stats panel appears while a job is running.
+- Use the "Throttle" slider to slow processing for visibility.
 
 ## Resume Bullets
 
@@ -116,9 +124,7 @@ Generate a sample PCAP via the UI:
 
 
 
-## Ongoing Work
-
-**full project layout** with FastAPI + React UI added:
+## Project Layout
 
 ```
 DPI/
@@ -137,35 +143,24 @@ DPI/
 │   ├── __init__.py
 │   └── benchmark.py
 ├── generate_test_pcap.py
-├── test_dpi.pcap
 ├── rules.json
 ├── README.md
 ├── .gitignore
-│
-├── api/                         # FastAPI backend
-│   ├── app.py                   # FastAPI entrypoint
-│   ├── jobs/                    # per-run job storage
-│   │   └── <job_id>/
-│   │       ├── input.pcap
-│   │       ├── output.pcap
-│   │       └── report.json
-│   ├── schemas.py               # request/response models
-│   └── utils.py                 # helpers (file mgmt, job runner)
-│
-└── ui/                          # React frontend
-    ├── package.json
-    ├── public/
-    │   └── index.html
-    └── src/
-        ├── App.jsx
-        ├── api.js               # API client
-        ├── components/
-        │   ├── UploadForm.jsx
-        │   ├── RulesForm.jsx
-        │   ├── RunConfig.jsx
-        │   ├── Progress.jsx
-        │   └── Report.jsx
-        └── styles/
-            └── app.css
+├── api/
+│   ├── app.py
+│   ├── requirements.txt
+│   ├── schemas.py
+│   └── utils.py
+└── ui/
+  ├── package.json
+  ├── package-lock.json
+  ├── index.html
+  ├── public/
+  │   └── favicon.svg
+  └── src/
+    ├── App.jsx
+    ├── api.js
+    └── styles/
+      └── app.css
 ```
 
