@@ -11,24 +11,63 @@ A pure-Python Deep Packet Inspection engine that parses PCAP files, classifies f
 - Live stats in CLI and UI, throttling, and JSON rule persistence
 - Sample PCAP generator with randomized domains
 
-## Architecture (Multi-threaded)
+## Architecture
 
-Reader -> Load Balancers -> Fast Paths -> Output Writer
+### Single-threaded (Diagram)
 
-- Reader: reads PCAP and parses packets
-- LB: consistent hashing keeps a flow on one FP
-- FP: DPI + rules + flow state
-- Writer: writes allowed packets to output PCAP
+```
+PCAP File
+  │
+  ▼
+Reader ──► Parser ──► Flow Table ──► DPI (SNI/Host) ──► Rules ──► Writer ──► Output PCAP
+```
 
-## How It Works (Single-threaded)
-
+Flow:
 1. Read packet from PCAP
 2. Parse headers and payload
-3. Build 5-tuple, look up flow
+3. Build 5-tuple and look up flow state
 4. Extract SNI/Host and classify app
 5. Apply blocking rules
 6. Forward (write) or drop
 7. Report stats
+
+Why this works: flow state stores the first SNI/Host and keeps all future packets of the same 5-tuple consistent.
+
+### Multi-threaded (Diagram)
+
+```
+      ┌──────────────────────┐
+PCAP File ─────►│ Reader (main thread) │
+      └──────────┬───────────┘
+            │
+            ▼
+     ┌────────────────────┐
+     │ Load Balancers     │
+     │  (hash 5-tuple)    │
+     └──────┬───────┬─────┘
+       │       │
+       ▼       ▼
+     ┌─────────┐ ┌─────────┐
+     │  FP0    │ │  FP1    │   ...
+     │ FlowTbl │ │ FlowTbl │
+     └────┬────┘ └────┬────┘
+          │           │
+          └──────┬────┘
+            ▼
+          ┌──────────────┐
+          │ Output Writer│
+          └──────┬───────┘
+            ▼
+       Output PCAP
+```
+
+Components:
+- Reader: reads PCAP and parses packets
+- Load Balancers (LB): hash 5-tuple to pick an FP
+- Fast Paths (FP): DPI + rules + per-FP flow table
+- Writer: writes allowed packets to output PCAP
+
+Why consistent hashing: all packets in a flow always land on the same FP, so flow state is correct without cross-thread locking.
 
 ## Layout
 
