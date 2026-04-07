@@ -252,7 +252,12 @@ def _add_dns_packets(
         )
 
 
-def build_sample_packets(*, randomize: bool = False, seed: Optional[int] = None) -> List[PacketSpec]:
+def build_sample_packets(
+    *,
+    randomize: bool = False,
+    seed: Optional[int] = None,
+    size_factor: int = 1,
+) -> List[PacketSpec]:
     samples: List[PacketSpec] = []
 
     rng = random.Random(seed) if randomize else None
@@ -322,9 +327,10 @@ def build_sample_packets(*, randomize: bool = False, seed: Optional[int] = None)
         rng.shuffle(http_hosts)
 
     def pick_extra(min_v: int, max_v: int) -> int:
-        return rng.randint(min_v, max_v) if rng else max_v
+        base = rng.randint(min_v, max_v) if rng else max_v
+        return max(1, base * size_factor)
 
-    tls_count = 4 if not randomize else rng.randint(3, 5)
+    tls_count = (4 if not randomize else rng.randint(3, 5)) * size_factor
     for idx in range(tls_count):
         host = tls_hosts[idx % len(tls_hosts)]
         _add_tls_flow(
@@ -336,7 +342,7 @@ def build_sample_packets(*, randomize: bool = False, seed: Optional[int] = None)
             extra_packets=pick_extra(2, 6),
         )
 
-    http_count = 1 if not randomize else rng.randint(1, 2)
+    http_count = (1 if not randomize else rng.randint(1, 2)) * size_factor
     for idx in range(http_count):
         host = http_hosts[idx % len(http_hosts)]
         _add_http_flow(
@@ -365,12 +371,13 @@ def write_test_pcap(
     verbose: bool = True,
     randomize: bool = False,
     seed: Optional[int] = None,
+    size_factor: int = 1,
 ) -> int:
     writer = PcapWriter(path)
     writer.open()
 
     ts = 1712420000
-    samples = build_sample_packets(randomize=randomize, seed=seed)
+    samples = build_sample_packets(randomize=randomize, seed=seed, size_factor=size_factor)
     for spec in samples:
         if spec.proto == "tcp":
             ip_payload = _build_tcp_packet(

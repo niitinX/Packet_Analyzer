@@ -10,8 +10,8 @@ export async function startRun(formData) {
   return response.json();
 }
 
-export async function startSampleRun(payload) {
-  const response = await fetch("/api/run-sample", {
+export async function generateSample(payload) {
+  const response = await fetch("/api/sample", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -20,7 +20,7 @@ export async function startSampleRun(payload) {
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(detail || "Failed to start sample job");
+    throw new Error(detail || "Failed to generate sample");
   }
   return response.json();
 }
