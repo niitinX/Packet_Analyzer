@@ -252,6 +252,7 @@ def run_mt(
     stats_interval: float,
     perf: bool,
     quiet: bool = False,
+    progress_callback=None,
 ) -> dict:
     start_time = time.perf_counter()
     reader = PcapReader(input_path)
@@ -263,7 +264,12 @@ def run_mt(
         print("\n[Reader] Processing packets...")
 
     stats = Stats()
-    stats_printer = LiveStatsPrinter(stats, stats_interval)
+    stats_printer = LiveStatsPrinter(
+        stats,
+        stats_interval,
+        on_update=progress_callback,
+        print_to_stdout=not quiet and progress_callback is None,
+    )
     stats_printer.start()
 
     output = OutputWriter(output_path)

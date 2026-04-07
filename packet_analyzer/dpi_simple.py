@@ -46,6 +46,7 @@ def run_simple(
     stats_interval: float,
     perf: bool,
     quiet: bool = False,
+    progress_callback=None,
 ) -> dict:
     start_time = time.perf_counter()
     reader = PcapReader(input_path)
@@ -63,7 +64,12 @@ def run_simple(
     blocked_app_matches: set[AppType] = set()
     blocked_ip_matches: set[str] = set()
 
-    stats_printer = LiveStatsPrinter(stats, stats_interval)
+    stats_printer = LiveStatsPrinter(
+        stats,
+        stats_interval,
+        on_update=progress_callback,
+        print_to_stdout=not quiet and progress_callback is None,
+    )
     stats_printer.start()
 
     if not quiet:

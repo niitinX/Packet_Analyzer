@@ -102,6 +102,14 @@ h1 {
   border: 1px solid var(--border);
 }
 
+.live-panel {
+  margin-bottom: 18px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
 .panel h2 {
   margin-bottom: 16px;
 }
@@ -137,6 +145,15 @@ h1 {
   border-radius: 12px;
   border: 1px solid var(--border);
   font-size: 14px;
+}
+
+.field input[type="range"] {
+  padding: 0;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .field.row {

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { downloadUrl, getStatus, startRun, startSampleRun } from "./api.js";
+import { downloadUrl, generateSample, getStatus, startRun } from "./api.js";
 
 const MODE_OPTIONS = [
   { value: "simple", label: "Single-threaded" },
@@ -24,22 +24,30 @@ export default function App() {
   const [mode, setMode] = useState("simple");
   const [lbs, setLbs] = useState(2);
   const [fps, setFps] = useState(2);
+  const [throttleMs, setThrottleMs] = useState(0);
   const [rules, setRules] = useState(DEFAULT_RULES);
   const [randomizeSample, setRandomizeSample] = useState(true);
+  const [sampleSize, setSampleSize] = useState(3);
+  const [sampleId, setSampleId] = useState("");
+  const [sampleCount, setSampleCount] = useState(0);
   const [jobId, setJobId] = useState(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [report, setReport] = useState(null);
+  const [progress, setProgress] = useState(null);
 
-  const canSubmit = useMemo(() => file && status !== "running", [file, status]);
+  const canSubmit = useMemo(
+    () => (file || sampleId) && status !== "running",
+    [file, sampleId, status]
+  );
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
     setReport(null);
 
-    if (!file) {
-      setError("Select a PCAP file to continue.");
+    if (!file && !sampleId) {
+      setError("Select a PCAP file or generate a sample first.");
       return;
     }
 
@@ -50,10 +58,16 @@ export default function App() {
     };
 
     const formData = new FormData();
-    formData.append("file", file);
+    if (file) {
+      formData.append("file", file);
+    }
+    if (sampleId && !file) {
+      formData.append("sample_id", sampleId);
+    }
     formData.append("mode", mode);
     formData.append("lbs", String(lbs));
     formData.append("fps", String(fps));
+    formData.append("throttle_ms", String(throttleMs));
     formData.append("rules", JSON.stringify(rulesPayload));
 
     try {
@@ -71,6 +85,10 @@ export default function App() {
     setError("");
     setReport(null);
 
+    if (status === "running") {
+      return;
+    }
+
     const rulesPayload = {
       blocked_ips: parseList(rules.blocked_ips),
       blocked_apps: parseList(rules.blocked_apps),
@@ -78,16 +96,12 @@ export default function App() {
     };
 
     try {
-      setStatus("running");
-      const { job_id } = await startSampleRun({
-        mode,
-        lbs: String(lbs),
-        fps: String(fps),
-        rules: JSON.stringify(rulesPayload),
+      const data = await generateSample({
         randomize: String(randomizeSample),
+        size_factor: String(sampleSize),
       });
-      setJobId(job_id);
-      pollStatus(job_id);
+      setSampleId(data.sample_id);
+      setSampleCount(data.packet_count || 0);
     } catch (err) {
       setStatus("idle");
       setError(err.message || "Failed to start sample job");
@@ -98,10 +112,15 @@ export default function App() {
     try {
       const data = await getStatus(id);
       setStatus(data.status);
+      if (data.progress) {
+        setProgress(data.progress);
+      }
       if (data.status === "done") {
         setReport(data.report);
+        setProgress(null);
       } else if (data.status === "error") {
         setError(data.error || "Job failed");
+        setProgress(null);
       } else {
         setTimeout(() => pollStatus(id), 1000);
       }
@@ -136,6 +155,10 @@ export default function App() {
             <input type="file" accept=".pcap" onChange={(e) => setFile(e.target.files[0])} />
           </label>
 
+          {sampleId && (
+            <p className="muted">Sample ready: {sampleCount} packets</p>
+          )}
+
           <label className="field checkbox">
             <input
               type="checkbox"
@@ -145,8 +168,32 @@ export default function App() {
             <span>Randomize sample domains</span>
           </label>
 
+          <label className="field">
+            <span>Sample size</span>
+            <input
+              type="range"
+              min={1}
+              max={6}
+              value={sampleSize}
+              onChange={(e) => setSampleSize(Number(e.target.value))}
+            />
+            <span className="hint">Size factor: {sampleSize}x</span>
+          </label>
+
+          <label className="field">
+            <span>Throttle (ms per packet)</span>
+            <input
+              type="range"
+              min={0}
+              max={50}
+              value={throttleMs}
+              onChange={(e) => setThrottleMs(Number(e.target.value))}
+            />
+            <span className="hint">{throttleMs} ms</span>
+          </label>
+
           <button className="secondary" type="button" onClick={handleSampleRun} disabled={status === "running"}>
-            Generate sample PCAP and run
+            Generate sample PCAP
           </button>
 
           <div className="field">
@@ -165,28 +212,28 @@ export default function App() {
             </div>
           </div>
 
-          <div className="field row">
-            <label>
-              <span>Load balancers</span>
-              <input
-                type="number"
-                min={1}
-                value={lbs}
-                onChange={(e) => setLbs(Number(e.target.value))}
-                disabled={mode !== "mt"}
-              />
-            </label>
-            <label>
-              <span>FPs per LB</span>
-              <input
-                type="number"
-                min={1}
-                value={fps}
-                onChange={(e) => setFps(Number(e.target.value))}
-                disabled={mode !== "mt"}
-              />
-            </label>
-          </div>
+          {mode === "mt" && (
+            <div className="field row">
+              <label>
+                <span>Load balancers</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={lbs}
+                  onChange={(e) => setLbs(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                <span>FPs per LB</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={fps}
+                  onChange={(e) => setFps(Number(e.target.value))}
+                />
+              </label>
+            </div>
+          )}
 
           <h3>Blocking Rules</h3>
           <label className="field">
@@ -223,6 +270,29 @@ export default function App() {
 
         <div className="panel report">
           <h2>Report</h2>
+          {status === "running" && progress && (
+            <div className="live-panel">
+              <h3>Live Stats</h3>
+              <div className="report-grid">
+                <div>
+                  <p className="label">Total packets</p>
+                  <p className="value">{progress.total_packets}</p>
+                </div>
+                <div>
+                  <p className="label">Forwarded</p>
+                  <p className="value">{progress.forwarded}</p>
+                </div>
+                <div>
+                  <p className="label">Dropped</p>
+                  <p className="value">{progress.dropped}</p>
+                </div>
+                <div>
+                  <p className="label">Bytes</p>
+                  <p className="value">{progress.total_bytes}</p>
+                </div>
+              </div>
+            </div>
+          )}
           {!report && <p className="muted">Run a job to see results.</p>}
           {report && (
             <div>

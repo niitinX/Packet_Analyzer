@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Dict
+from typing import Callable, Optional
 
 
 @dataclass
@@ -55,9 +55,18 @@ class Stats:
 
 
 class LiveStatsPrinter:
-    def __init__(self, stats: Stats, interval_sec: float) -> None:
+    def __init__(
+        self,
+        stats: Stats,
+        interval_sec: float,
+        *,
+        on_update: Optional[Callable[[StatsSnapshot], None]] = None,
+        print_to_stdout: bool = True,
+    ) -> None:
         self._stats = stats
         self._interval = interval_sec
+        self._on_update = on_update
+        self._print_to_stdout = print_to_stdout
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -75,11 +84,14 @@ class LiveStatsPrinter:
     def _run(self) -> None:
         while not self._stop.wait(self._interval):
             snap = self._stats.snapshot()
-            print(
-                "[Stats] total={t} fwd={f} drop={d} bytes={b}".format(
-                    t=snap.total_packets,
-                    f=snap.forwarded,
-                    d=snap.dropped,
-                    b=snap.total_bytes,
+            if self._on_update:
+                self._on_update(snap)
+            if self._print_to_stdout:
+                print(
+                    "[Stats] total={t} fwd={f} drop={d} bytes={b}".format(
+                        t=snap.total_packets,
+                        f=snap.forwarded,
+                        d=snap.dropped,
+                        b=snap.total_bytes,
+                    )
                 )
-            )
