@@ -1,0 +1,81 @@
+
+PROJECT CONTEXT:
+
+* Parses PCAP files
+* Extracts Ethernet, IPv4, TCP, UDP headers
+* Tracks flows using 5-tuple
+* Extracts TLS SNI and HTTP Host
+* Classifies traffic by domain/app
+* Applies blocking rules (IP, domain, app)
+* Multi-threaded pipeline with consistent hashing
+* Writes filtered PCAP output
+* Includes benchmarking, throttling, and live stats
+
+INSTRUCTIONS:
+
+1. Start with a HIGH-LEVEL OVERVIEW:
+
+   * Explain the complete workflow from packet input → output
+   * Use simple analogies first, then technical explanation
+
+2. BREAK DOWN INTO MODULES:
+   For each component (PCAP reader, parser, flow tracking, SNI extraction, rules engine, multi-threading, writer):
+
+   * What it does
+   * Why it is needed
+   * How it works internally
+   * What would break if it is removed
+
+3. DEEP DIVE INTO CORE CONCEPTS:
+   Explain in depth (with examples):
+
+   * What is a network packet?
+   * Ethernet vs IP vs TCP/UDP
+   * What is a 5-tuple and why it uniquely identifies a flow
+   * What is a flow and why state tracking is needed
+   * How TLS handshake works and where SNI is found
+   * Why HTTPS hides payload but not SNI
+   * Difference between packet-level vs flow-level processing
+
+4. MULTI-THREADING + SYSTEM DESIGN:
+
+   * Why multi-threading is used here
+   * What problem consistent hashing solves
+   * How load balancing works in this system
+   * Potential race conditions and how they are avoided
+   * Limitations due to Python GIL
+
+5. EDGE CASES & LIMITATIONS:
+
+   * What happens if packets arrive out of order?
+   * What if packets are fragmented?
+   * What if TLS is encrypted without SNI?
+   * What if flow state is lost?
+   * What are the current limitations of this design?
+
+6. TRADE-OFFS:
+   For each major design decision, explain:
+
+   * Why this approach was chosen
+   * What alternatives exist
+   * Pros and cons
+
+7. INTERVIEW PREPARATION:
+
+   * Ask me 10 challenging interview questions based on this project
+   * After each question, wait for my answer
+   * Then give feedback and correct explanation
+
+8. REAL-WORLD CONNECTION:
+
+   * Compare this system to real tools (like firewalls or network analyzers)
+   * What would be needed to make this production-grade?
+
+9. PERFORMANCE THINKING:
+
+   * Identify bottlenecks in this system
+   * Suggest optimizations (code-level + architecture-level)
+
+
+
+
